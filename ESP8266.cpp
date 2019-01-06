@@ -20,40 +20,65 @@
  */
 #include "ESP8266.h"
 
-#define LOG_OUTPUT_DEBUG            (1)
-#define LOG_OUTPUT_DEBUG_PREFIX     (1)
+//#define LOG_OUTPUT_DEBUG
+//#define LOG_OUTPUT_DEBUG_PREFIX
 
-#define logDebug(arg)\
-    do {\
-        if (LOG_OUTPUT_DEBUG)\
-        {\
-            if (LOG_OUTPUT_DEBUG_PREFIX)\
-            {\
-                Serial.print("[LOG Debug: ");\
-                Serial.print((const char*)__FILE__);\
-                Serial.print(",");\
-                Serial.print((unsigned int)__LINE__);\
-                Serial.print(",");\
-                Serial.print((const char*)__FUNCTION__);\
-                Serial.print("] ");\
-            }\
-            Serial.print(arg);\
-        }\
-    } while(0)
+#ifdef LOG_OUTPUT_DEBUG
+	#ifdef LOG_OUTPUT_DEBUG_PREFIX
+		#define logDebug(arg)\
+			do {\
+				Serial.print("[LOG Debug: ");\
+				Serial.print((const char*)__FILE__);\
+				Serial.print(",");\
+				Serial.print((unsigned int)__LINE__);\
+				Serial.print(",");\
+				Serial.print((const char*)__FUNCTION__);\
+				Serial.print("] ");\
+				Serial.print(arg);\
+			} while(0)
+	#else
+		#define logDebug(arg)\
+			Serial.print(arg);
+	#endif
+#else
+	#define logDebug(dummy) // dummy
+#endif
 
 #ifdef ESP8266_USE_SOFTWARE_SERIAL
-ESP8266::ESP8266(SoftwareSerial &uart, uint32_t baud): m_puart(&uart)
+ESP8266::ESP8266(SoftwareSerial &uart, uint32_t baud1, uint32_t baud2): m_puart(&uart)
 {
-    m_puart->begin(baud);
-    rx_empty();
+	_baud1 = baud1;
+	_baud2 = baud2;
+    m_puart->begin(baud1);
 }
 #else
-ESP8266::ESP8266(HardwareSerial &uart, uint32_t baud): m_puart(&uart)
+ESP8266::ESP8266(HardwareSerial &uart, uint32_t baud1, uint32_t baud2): m_puart(&uart)
 {
-    m_puart->begin(baud);
-    rx_empty();
+	_baud1 = baud1;
+	_baud2 = baud2;
+    m_puart->begin(baud1);
 }
 #endif
+
+bool ESP8266::reconfigUART() 
+{
+	if (_baud1 == _baud2) {
+		return true;
+	}
+
+	logDebug("reconfigUART : \n");
+
+	rx_empty(); // limpar o que existir
+
+	m_puart->print("AT+UART_CUR=");
+	m_puart->print(_baud2);
+	m_puart->println(",8,1,0,0");
+	delay(300);
+	m_puart->begin(_baud2);
+	delay(300);
+
+    return recvFind("OK");
+}
 
 bool ESP8266::kick(void)
 {
@@ -64,7 +89,6 @@ bool ESP8266::restart(void)
 {
     unsigned long start;
     if (eATRST()) {
-        delay(2000);
         start = millis();
         while (millis() - start < 3000) {
             if (eAT()) {
@@ -93,7 +117,7 @@ bool ESP8266::setOprToStation(void)
     if (mode == 1) {
         return true;
     } else {
-        if (sATCWMODE(1) && restart()) {
+        if (sATCWMODE(1) /*&& restart()*/) {
             return true;
         } else {
             return false;
@@ -110,7 +134,7 @@ bool ESP8266::setOprToSoftAP(void)
     if (mode == 2) {
         return true;
     } else {
-        if (sATCWMODE(2) && restart()) {
+        if (sATCWMODE(2) /*&& restart()*/) {
             return true;
         } else {
             return false;
@@ -127,7 +151,7 @@ bool ESP8266::setOprToStationSoftAP(void)
     if (mode == 3) {
         return true;
     } else {
-        if (sATCWMODE(3) && restart()) {
+        if (sATCWMODE(3) /*&& restart()*/) {
             return true;
         } else {
             return false;
@@ -320,6 +344,7 @@ uint32_t ESP8266::recvPkg(uint8_t *buffer, uint32_t buffer_size, uint32_t *data_
     while (millis() - start < timeout) {
         if(m_puart->available() > 0) {
             a = m_puart->read();
+			logDebug(a);
             data += a;
         }
         
@@ -357,6 +382,7 @@ uint32_t ESP8266::recvPkg(uint8_t *buffer, uint32_t buffer_size, uint32_t *data_
         while (millis() - start < 3000) {
             while(m_puart->available() > 0 && i < ret) {
                 a = m_puart->read();
+				logDebug(a);
                 buffer[i++] = a;
             }
             if (i == ret) {
@@ -377,7 +403,8 @@ uint32_t ESP8266::recvPkg(uint8_t *buffer, uint32_t buffer_size, uint32_t *data_
 void ESP8266::rx_empty(void) 
 {
     while(m_puart->available() > 0) {
-        m_puart->read();
+        char a = m_puart->read();
+        logDebug(a);	
     }
 }
 
@@ -389,6 +416,7 @@ String ESP8266::recvString(String target, uint32_t timeout)
     while (millis() - start < timeout) {
         while(m_puart->available() > 0) {
             a = m_puart->read();
+			logDebug(a);
 			if(a == '\0') continue;
             data += a;
         }
@@ -407,6 +435,7 @@ String ESP8266::recvString(String target1, String target2, uint32_t timeout)
     while (millis() - start < timeout) {
         while(m_puart->available() > 0) {
             a = m_puart->read();
+			logDebug(a);
 			if(a == '\0') continue;
             data += a;
         }
@@ -427,6 +456,7 @@ String ESP8266::recvString(String target1, String target2, String target3, uint3
     while (millis() - start < timeout) {
         while(m_puart->available() > 0) {
             a = m_puart->read();
+			logDebug(a);
 			if(a == '\0') continue;
             data += a;
         }
@@ -478,7 +508,39 @@ bool ESP8266::eAT(void)
 bool ESP8266::eATRST(void) 
 {
     rx_empty();
+	logDebug("\nreset 1\n");
+	m_puart->println();
+	rx_empty();
     m_puart->println("AT+RST");
+	delay(1000);
+	rx_empty();
+	delay(4000);
+	rx_empty();
+	if (_baud1 != _baud2) {
+		logDebug("\nreset 2 com baud2 : ");
+		logDebug(_baud2);
+		logDebug("\n");
+		m_puart->begin(_baud2);
+		m_puart->println();
+		rx_empty();
+		m_puart->println("AT+RST");
+		delay(1000);
+		rx_empty();
+		delay(4000);
+		rx_empty();
+		logDebug("\nreset 3 com baud1 : ");
+		logDebug(_baud1);
+		logDebug("\n");
+		m_puart->begin(_baud1);
+		m_puart->println();
+		rx_empty();
+		m_puart->println("AT+RST");
+		delay(1000);
+		rx_empty();
+		delay(4000);
+		rx_empty();
+		return reconfigUART();
+	}
     return recvFind("OK");
 }
 
@@ -525,16 +587,21 @@ bool ESP8266::sATCWJAP(String ssid, String pwd)
 {
     String data;
     rx_empty();
-    m_puart->print("AT+CWJAP=\"");
+    m_puart->print("AT+CWJAP_CUR=\"");
     m_puart->print(ssid);
     m_puart->print("\",\"");
     m_puart->print(pwd);
     m_puart->println("\"");
     
-    data = recvString("OK", "FAIL", 10000);
-    if (data.indexOf("OK") != -1) {
-        return true;
-    }
+	for (int i = 0; i < 2; i++) {
+		data = recvString("OK", "FAIL", 20000);
+		if (data.indexOf("OK") != -1) {
+			return true;
+		}
+		if (data.indexOf("FAIL") != -1) {
+			return false;
+		}
+	}
     return false;
 }
 
@@ -609,7 +676,7 @@ bool ESP8266::eATCIPSTATUS(String &list)
     delay(100);
     rx_empty();
     m_puart->println("AT+CIPSTATUS");
-    return recvFindAndFilter("OK", "\r\r\n", "\r\n\r\nOK", list);
+    return recvFindAndFilter("OK", "STATUS:", "\r\n+CIPSTATUS", list);
 }
 bool ESP8266::sATCIPSTARTSingle(String type, String addr, uint32_t port)
 {
@@ -700,7 +767,7 @@ bool ESP8266::eATCIFSR(String &list)
 {
     rx_empty();
     m_puart->println("AT+CIFSR");
-    return recvFindAndFilter("OK", "\r\r\n", "\r\n\r\nOK", list);
+    return recvFindAndFilter("OK", "+CIFSR:STAIP,\"", "\"\r\n+CIFSR:STAMAC", list);
 }
 bool ESP8266::sATCIPMUX(uint8_t mode)
 {

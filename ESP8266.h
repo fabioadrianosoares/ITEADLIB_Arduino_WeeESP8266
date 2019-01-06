@@ -24,7 +24,7 @@
 #include "Arduino.h"
 
 
-//#define ESP8266_USE_SOFTWARE_SERIAL
+#define ESP8266_USE_SOFTWARE_SERIAL
 
 
 #ifdef ESP8266_USE_SOFTWARE_SERIAL
@@ -47,7 +47,7 @@ class ESP8266 {
      *
      * @warning parameter baud depends on the AT firmware. 9600 is an common value. 
      */
-    ESP8266(SoftwareSerial &uart, uint32_t baud = 9600);
+    ESP8266(SoftwareSerial &uart, uint32_t baud1 = 9600, uint32_t baud2 = 9600);
 #else /* HardwareSerial */
     /*
      * Constuctor. 
@@ -57,9 +57,8 @@ class ESP8266 {
      *
      * @warning parameter baud depends on the AT firmware. 9600 is an common value. 
      */
-    ESP8266(HardwareSerial &uart, uint32_t baud = 9600);
+    ESP8266(HardwareSerial &uart, uint32_t baud1 = 9600, uint32_t baud2 = 9600);
 #endif
-    
     
     /** 
      * Verify ESP8266 whether live or not. 
@@ -394,8 +393,11 @@ class ESP8266 {
      */
     uint32_t recv(uint8_t *coming_mux_id, uint8_t *buffer, uint32_t buffer_size, uint32_t timeout = 1000);
 
+	bool reconfigUART();
  private:
 
+	uint32_t _baud1, _baud2;
+	
     /* 
      * Empty the buffer or UART RX.
      */
